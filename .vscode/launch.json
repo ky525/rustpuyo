@@ -5,11 +5,41 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "type": "chrome",
+            "type": "lldb",
             "request": "launch",
-            "name": "Launch Chrome against localhost",
-            "url": "http://localhost:8080",
-            "webRoot": "${workspaceFolder}"
+            "name": "Debug executable 'maeba'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=maeba",
+                    "--package=maeba"
+                ],
+                "filter": {
+                    "name": "maeba",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'maeba'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=maeba",
+                    "--package=maeba"
+                ],
+                "filter": {
+                    "name": "maeba",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
