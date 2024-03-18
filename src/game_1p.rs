@@ -2,13 +2,14 @@
 pub mod player_field;
 
 const FIELD_BASE_X : f32 = -160.0;
-const FIELD_BASE_Y : f32 = -300.0;
+const FIELD_BASE_Y : f32 = -260.0;
 
 const NEXT_X : f32 = 200.0;
 const NEXT_Y : f32 = 200.0;
 
 use bevy::text::Text2dBounds;
 use bevy::prelude::*;
+use leafwing_input_manager::action_state::ActionState;
 
 use crate::game_statics;
 
@@ -66,25 +67,9 @@ impl Plugin for Game1PPlugin{
                 next_y : NEXT_Y,
                 player_id : 0,
                 game_mode : 0,
-                key_down : KeyCode::Down as u32,
-                key_left : KeyCode::Left as u32,
-                key_right : KeyCode::Right as u32,
-                key_rot_r : KeyCode::X as u32,
-                key_rot_l : KeyCode::Z as u32,
                 ..default()
             }
         });
-/*
-        .add_plugins(player_field::PlayerFieldPlugin{
-            values : player_field::FieldValues {
-                field_base_x : FIELD_BASE_X + 200.0,
-                field_base_y : FIELD_BASE_Y,
-                next_x : NEXT_X + 200.0,
-                next_y : NEXT_Y,
-                player_id : 1,
-                ..default()
-            }
-        });*/
     }
 }
 
@@ -145,10 +130,11 @@ fn on_enter_wait(mut q_text : Query<&mut Text, With<Message>>)
 }
 
 fn wait(
-    key_input : Res<Input<KeyCode>>,
+    q_key : Query<&ActionState<game_statics::Action>, With<game_statics::Player1>>,
     mut state : ResMut<NextState<PlayState>>,
 ){
-    if key_input.just_pressed(KeyCode::Z)
+    let action_state = q_key.single();
+    if action_state.just_pressed(&game_statics::Action::RotR)
     {
         state.set(PlayState::Ready);
     }
@@ -211,19 +197,24 @@ fn playing(mut state : ResMut<NextState<PlayState>>,
 fn on_enter_result(mut q_text : Query<&mut Text, With<Message>>,)
 {
     let mut text = q_text.single_mut();
-    text.sections[0].value = "GameOver\nZ:Restart\nX:Menu".to_string();
+    text.sections[0].value = "GameOver\nX:Restart\nZ:Menu".to_string();
 }
 
 fn result(
-    key_input : Res<Input<KeyCode>>,
+    q_key : Query<&ActionState<game_statics::Action>, With<game_statics::Player1>>,
     mut state : ResMut<NextState<PlayState>>,
     mut gstate : ResMut<NextState<GameState>>,
-    mut gc : EventWriter<game_statics::TransitionEvent>,
-    mut rst: EventWriter<game_statics::Reset>
+    mut rst: EventReader<game_statics::Reset>
 ){
-    if key_input.just_pressed(KeyCode::X)
+    let action_state = q_key.single();
+    if action_state.just_pressed(&game_statics::Action::RotL)
     {
         state.set(PlayState::None);
         gstate.set(GameState::Title);
+    }
+
+    for _ in rst.read()
+    {
+        state.set(PlayState::Wait);
     }
 }

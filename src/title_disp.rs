@@ -1,4 +1,7 @@
 use bevy::{prelude::*, text::Text2dBounds};
+use leafwing_input_manager::action_state::ActionState;
+use crate::game_statics;
+
 use super::GameState;
 
 pub struct TitlePlugin;
@@ -24,8 +27,13 @@ struct Cursor
 struct TitleDisp;
 
 fn on_enter(mut commands : Commands,
-    qe : Query<Entity, Without<Camera2d>>)
+    qe : Query<Entity, Without<game_statics::Permanent>>)
 {
+    for e in qe.iter()
+    {
+        commands.entity(e).despawn();
+    }
+
     commands.spawn((Text2dBundle{
         text : Text::from_section(
             "PUYOPUYO", 
@@ -157,25 +165,26 @@ fn on_enter(mut commands : Commands,
 }
 
 fn update(
-    key_input : Res<Input<KeyCode>>,
+    q_key : Query<&ActionState<game_statics::Action>, With<game_statics::Player1>>,
     mut game_state: ResMut<NextState<GameState>>,
     mut q_cursor : Query<(&mut Transform, &mut Cursor)>)
 {
+    let action_state = q_key.single();
 
     for(mut transform, mut cursor) in &mut q_cursor
     {
-        if key_input.just_pressed(KeyCode::Down)
+        if action_state.just_pressed(&game_statics::Action::Down)
         {
             cursor.point += 1;
             cursor.point %= CURSOR_NUM;
         }
-        if key_input.just_pressed(KeyCode::Up)
+        if action_state.just_pressed(&game_statics::Action::Up)
         {
             cursor.point += 3;
             cursor.point %= CURSOR_NUM;
         }
 
-        if key_input.just_pressed(KeyCode::Return)
+        if action_state.just_pressed(&game_statics::Action::RotR)
         {
             match cursor.point{
                 0=>{

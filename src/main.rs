@@ -9,14 +9,21 @@ use leafwing_input_manager::prelude::*;
 
 use game_statics::*;
 
-const BLOCK_SIZE : f32 = 40.0;
-const BLOCK_INNER_SIZE : f32 = 36.0;
-
 fn setup(
     mut commands : Commands,
-    mut game_state: ResMut<NextState<GameState>>)
+    mut game_state: ResMut<NextState<GameState>>,
+    query : Query<Entity>)
 {
-    commands.spawn(Camera2dBundle::default());
+    // 初期状態で居るやつらにはPermanentを付与しておく
+    for e in query.iter()
+    {
+        commands.entity(e).insert(game_statics::Permanent);
+    }
+
+    commands
+    .spawn(Camera2dBundle::default())
+    .insert(game_statics::Permanent);
+
     game_state.set(GameState::Init);
 }
 

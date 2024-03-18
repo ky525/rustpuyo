@@ -1,4 +1,5 @@
 use bevy::{prelude::*, render::render_resource::encase::rts_array::Length, text::Text2dBounds};
+use leafwing_input_manager::action_state::ActionState;
 use rand::prelude::*;
 use std::{f32::consts::PI, marker::PhantomData};
 
@@ -467,7 +468,8 @@ fn setup<T : Component + Default>(
             text_anchor : bevy::sprite::Anchor::CenterRight,
             ..default()
         })
-        .insert(T::default());
+        .insert(T::default())
+        .insert(Score);
 
     // 1P側からのみ送信
     if fvr.values.player_id == 0
@@ -530,33 +532,11 @@ fn create_next<T : Component + Default>(
     .insert(T::default());
 }
 
-fn update_keys<T : Component + Default>(
-    key_input : Res<Input<KeyCode>>,
-    //axes : Res<Input<GamepadAxis>>,
-    //buttons : Res<Input<GamepadButton>>,
-    mut key_resource : ResMut<KeyResource<T>>,
-    fvr : Res<FieldValueResource<T>>,
-)
-{
-    // reset
-    key_resource.reset();
-
-    // key_input
-    key_resource.down |= key_input.pressed(u32_to_keycode(fvr.values.key_down));
-    key_resource.left |= key_input.pressed(u32_to_keycode(fvr.values.key_left));
-    key_resource.right |= key_input.pressed(u32_to_keycode(fvr.values.key_right));
-    key_resource.just_left |= key_input.just_pressed(u32_to_keycode(fvr.values.key_left));
-    key_resource.just_right |= key_input.just_pressed(u32_to_keycode(fvr.values.key_right));
-    key_resource.just_rot_r |= key_input.just_pressed(u32_to_keycode(fvr.values.key_rot_r));
-    key_resource.just_rot_l |= key_input.just_pressed(u32_to_keycode(fvr.values.key_rot_l));
-
-}
-
 fn update<T : Component + Default>(
     mut commands : Commands,
-    key_resource : ResMut<KeyResource<T>>,
     mut query : Query<(Entity, &mut Transform, &mut Block, &mut Sprite), With<T>>,
     mut q_field : Query<&mut Field, With<T>>,
+    q_key : Query<&ActionState<game_statics::Action>, With<T>>,
     fvr : Res<FieldValueResource<T>>,
     mut rng : ResMut<NextRngResource<T>>,
     mut e_gc : EventReader<game_statics::TransitionEvent>,
@@ -565,6 +545,7 @@ fn update<T : Component + Default>(
     mut e_reset : EventWriter<game_statics::Reset>,
 ) {
     let values = fvr.values;
+    let action_state = q_key.single();
     let mut field;
     if let Ok(c) = q_field.get_single_mut()
     {
@@ -644,7 +625,7 @@ fn update<T : Component + Default>(
                         ..default()
                     },
                     sprite: Sprite{
-                        color: Color::BLACK,
+                        color: Color::rgb_u8(43, 44, 47),
                         ..default()
                     },
                     ..default()
@@ -713,7 +694,7 @@ fn update<T : Component + Default>(
             {
                 field.fall_next_count += 1;
             }
-            if key_resource.down
+            if action_state.pressed(&game_statics::Action::Down)
             {
                 field.fall_next_count += field.fall_count;
                 if field.on_ground
@@ -723,7 +704,7 @@ fn update<T : Component + Default>(
             }
             if field.fall_next_count >= field.fall_count
             {
-                if key_resource.down
+                if action_state.pressed(&game_statics::Action::Down)
                 {
                     if field.fall_down_count % 2 == 0
                     {
@@ -746,12 +727,12 @@ fn update<T : Component + Default>(
 
             // 左
             let mut move_left = false;
-            if key_resource.just_left 
+            if action_state.just_pressed(&game_statics::Action::Left)
             {
                 move_left = true;
                 field.moving_lr_count = MOVING_FIRST_COUNT;
             }
-            if key_resource.left 
+            if action_state.pressed(&game_statics::Action::Left)
             {
                 field.moving_lr_count -= 1;
                 if field.moving_lr_count == 0
@@ -776,12 +757,12 @@ fn update<T : Component + Default>(
 
             // 右
             let mut move_right = false;
-            if key_resource.just_right
+            if action_state.just_pressed(&game_statics::Action::Right)
             {
                 move_right = true;
                 field.moving_lr_count = MOVING_FIRST_COUNT;
             }
-            if key_resource.right
+            if action_state.pressed(&game_statics::Action::Right)
             {
                 field.moving_lr_count -= 1;
                 if field.moving_lr_count == 0
@@ -805,7 +786,7 @@ fn update<T : Component + Default>(
             }
 
             // 右回転
-            if key_resource.just_rot_r
+            if action_state.just_pressed(&game_statics::Action::RotR)
             {
                 field.moving_prev_dir_idx = field.moving_dir_idx;
                 field.moving_rot_count = ROTATE_COUNT;
@@ -873,7 +854,7 @@ fn update<T : Component + Default>(
             }
 
             // 左回転
-            if key_resource.just_rot_l
+            if action_state.just_pressed(&game_statics::Action::RotL)
             {
                 field.moving_prev_dir_idx = field.moving_dir_idx;
                 field.moving_rot_count = ROTATE_COUNT;
@@ -1400,7 +1381,10 @@ fn update<T : Component + Default>(
         }
 
         FieldState::Win => {
-            // NOP
+            if action_state.just_pressed(&game_statics::Action::RotR)
+            {
+                e_reset.send(game_statics::Reset(thread_rng().gen::<u64>()));
+            }
         }
 
         FieldState::Lose => {
@@ -1409,7 +1393,10 @@ fn update<T : Component + Default>(
         }
 
         FieldState::LoseFall => {
-            // TODO 落ちる処理
+            if action_state.just_pressed(&game_statics::Action::RotR)
+            {
+                e_reset.send(game_statics::Reset(thread_rng().gen::<u64>()));
+            }
         }
     }
 
@@ -1420,7 +1407,7 @@ fn update<T : Component + Default>(
 }
 
 fn update_ui<T : Component + Default>(
-    mut q_text : Query<&mut Text, With<T>>,
+    mut q_text : Query<(&mut Text, &Score), With<T>>,
     q_field : Query<&mut Field, With<T>>)
 {
     if let Err(_) = q_field.get_single()
@@ -1428,7 +1415,7 @@ fn update_ui<T : Component + Default>(
         return;
     }
     let field = q_field.single();
-    let mut text = q_text.single_mut();
+    let mut text = q_text.single_mut().0;
 
     if field.field_state == FieldState::Delete
     {
@@ -1661,11 +1648,8 @@ fn nothing<T : Component + Default>(
     }
 }
 
-#[derive(Component, Default)]
-struct Player1;
-
-#[derive(Component, Default)]
-struct Player2;
+#[derive(Component)]
+struct Score;
 
 #[derive(Default)]
 pub struct PlayerFieldPlugin{
@@ -1681,12 +1665,6 @@ pub struct FieldValues
     pub next_y : f32,
     pub player_id : i32,
     pub game_mode : i32,
-
-    pub key_left : u32,
-    pub key_right : u32,
-    pub key_down : u32,
-    pub key_rot_r : u32,
-    pub key_rot_l : u32,
 }
 
 #[derive(Default, Resource)]
@@ -1694,47 +1672,6 @@ pub struct FieldValueResource<T>
 {
     pub values : FieldValues,
     phantom : PhantomData<T>,
-}
-
-
-#[derive(Default, Resource)]
-pub struct KeyResource<T>
-{
-    pub down : bool,
-    pub left : bool,
-    pub right : bool,
-    pub just_left : bool,
-    pub just_right : bool,
-    pub just_rot_r : bool,
-    pub just_rot_l : bool,
-    phantom : PhantomData<T>,
-}
-
-impl<T> KeyResource<T>
-{
-    pub fn reset(&mut self)
-    {
-        self.down = false;
-        self.left = false;
-        self.right = false;
-        self.just_left = false;
-        self.just_right = false;
-        self.just_rot_r = false;
-        self.just_rot_l = false;
-    }
-}
-
-fn u32_to_keycode(n : u32) -> KeyCode
-{
-    match n {
-        33 => KeyCode::X,
-        35 => KeyCode::Z,
-        70 => KeyCode::Left,
-        71 => KeyCode::Up,
-        72 => KeyCode::Right,
-        73 => KeyCode::Down,
-        _ => KeyCode::F24,
-    }
 }
 
 #[derive(Resource)]
@@ -1749,26 +1686,26 @@ impl Plugin for PlayerFieldPlugin{
     fn build(&self, app : &mut App) {
         match self.values.game_mode{
             0=>{
-                    self.build_sub::<game_statics::GameMode1P, Player1>(app);
+                    self.build_sub::<game_statics::GameMode1P, game_statics::Player1>(app);
                 }
             1=>{
                 if self.values.player_id == 0
                 {
-                    self.build_sub::<game_statics::GameMode2PLocal, Player1>(app);
+                    self.build_sub::<game_statics::GameMode2PLocal, game_statics::Player1>(app);
                 }
                 else
                 {
-                    self.build_sub::<game_statics::GameMode2PLocal, Player2>(app);
+                    self.build_sub::<game_statics::GameMode2PLocal, game_statics::Player2>(app);
                 }
             }
             2=>{
                 if self.values.player_id == 0
                 {
-                    self.build_sub::<game_statics::GameMode2POnline, Player1>(app);
+                    self.build_sub::<game_statics::GameMode2POnline, game_statics::Player1>(app);
                 }
                 else
                 {
-                    self.build_sub::<game_statics::GameMode2POnline, Player2>(app);
+                    self.build_sub::<game_statics::GameMode2POnline, game_statics::Player2>(app);
                 }
             }
             _=>{}
@@ -1789,7 +1726,6 @@ impl PlayerFieldPlugin{
 
     fn build_sub<R : Resource, C : Component + Default> (&self, app : &mut App){
         app
-        .add_systems(PreUpdate, update_keys::<C>.run_if(resource_exists::<R>()))
         .add_systems(Update, update::<C>.run_if(resource_exists::<R>()))
         .add_systems(Update, receive_ojama::<C>.run_if(resource_exists::<R>()))
         .add_systems(Update, update_ui::<C>.run_if(resource_exists::<R>()))
@@ -1797,9 +1733,6 @@ impl PlayerFieldPlugin{
         .add_systems(PostUpdate, receive_command::<C>.run_if(resource_exists::<R>()))
         .insert_resource(FieldValueResource::<C>{
             values : self.values, 
-            ..default()
-        })
-        .insert_resource(KeyResource::<C>{
             ..default()
         })
         .insert_resource(NextRngResource::<C>{

@@ -42,6 +42,16 @@ pub struct GameMode2PLocal;
 #[derive(Resource, Default)]
 pub struct GameMode2POnline;
 
+
+#[derive(Component, Default)]
+pub struct Player1;
+
+#[derive(Component, Default)]
+pub struct Player2;
+
+#[derive(Component, Default)]
+pub struct Permanent;
+
 #[derive(Event)]
 pub struct TransitionEvent
 {

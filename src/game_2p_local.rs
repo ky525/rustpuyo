@@ -15,6 +15,7 @@ const NEXT_2P_Y : f32 = 200.0;
 
 use bevy::text::Text2dBounds;
 use bevy::prelude::*;
+use leafwing_input_manager::action_state::ActionState;
 use crate::game_statics;
 
 use super::GameState;
@@ -35,6 +36,14 @@ enum PlayState
 struct GameValue
 {
     ready_count : i32,
+
+    ready_1p : bool,
+    ready_2p : bool,
+
+    win_1p : i32,
+    win_2p : i32,
+
+    loser_id : i32,
 }
 
 #[derive(Component)]
@@ -70,11 +79,6 @@ impl Plugin for Game2PLocalPlugin{
                 next_y : NEXT_1P_Y,
                 player_id : 0,
                 game_mode : 1,
-                key_down : KeyCode::Down as u32,
-                key_left : KeyCode::Left as u32,
-                key_right : KeyCode::Right as u32,
-                key_rot_r : KeyCode::X as u32,
-                key_rot_l : KeyCode::Z as u32,
                 ..default()
             }
         })
@@ -86,11 +90,6 @@ impl Plugin for Game2PLocalPlugin{
                 next_y : NEXT_2P_Y,
                 player_id : 1,
                 game_mode : 1,
-                key_down : KeyCode::Down as u32,
-                key_left : KeyCode::Left as u32,
-                key_right : KeyCode::Right as u32,
-                key_rot_r : KeyCode::X as u32,
-                key_rot_l : KeyCode::Z as u32,
                 ..default()
             }
         });
@@ -121,7 +120,30 @@ fn on_enter(mut commands : Commands, mut play_state: ResMut<NextState<PlayState>
             text_anchor : bevy::sprite::Anchor::CenterRight,
             ..default()
         }))
-        .insert(Message);
+        .insert(Message)
+        .insert(game_statics::Player1);
+
+        commands.spawn((Text2dBundle{
+            text : Text::from_section(
+                "", 
+                TextStyle{
+                    font_size: player_field::BLOCK_INNER_SIZE,
+                    ..default()
+                }),
+                text_2d_bounds : Text2dBounds{
+                    size : Vec2 { x : player_field::BLOCK_SIZE * player_field::FIELD_WIDTH as f32, y : player_field::BLOCK_SIZE * 3.0},
+                    ..default()
+                },
+                transform : Transform {
+                    translation : Vec3 {x:FIELD_BASE_2P_X + player_field::BLOCK_SIZE * 6.0, y:FIELD_BASE_2P_Y + player_field::BLOCK_SIZE * 10.0 , z : 10.0},
+                    ..default()
+                },
+                text_anchor : bevy::sprite::Anchor::CenterRight,
+                ..default()
+            }))
+            .insert(Message)
+            .insert(game_statics::Player2);
+
     play_state.set(PlayState::Wait);
 }
 
@@ -149,17 +171,48 @@ fn on_exit(mut commands : Commands,
 
 fn on_enter_wait(mut q_text : Query<&mut Text, With<Message>>)
 {
-    let mut text = q_text.single_mut();
-    text.sections[0].value = "Press Z To Ready".to_string();
+    for mut text in &mut q_text
+    {
+        text.sections[0].value = "Press Z To Ready".to_string();
+    }
 }
 
 fn wait(
-    key_input : Res<Input<KeyCode>>,
+    mut q_gv : Query<&mut GameValue>,
+    q_key_1 : Query<&ActionState<game_statics::Action>, With<game_statics::Player1>>,
+    q_key_2 : Query<&ActionState<game_statics::Action>, With<game_statics::Player2>>,
+    mut q_ps : ParamSet<(
+        Query<(&mut Text, &game_statics::Player1, &Message)>,
+        Query<(&mut Text, &game_statics::Player2, &Message)>)>,
     mut state : ResMut<NextState<PlayState>>,
 ){
-    if key_input.just_pressed(KeyCode::Z)
+    let mut gv = q_gv.single_mut();
+    let action_state_1 = q_key_1.single();
+    let action_state_2 = q_key_2.single();
+
+    if action_state_1.just_pressed(&game_statics::Action::RotR)
+    {
+        for mut text_1 in q_ps.p0().iter_mut()
+        {
+            text_1.0.sections[0].value ="Ready".to_string();
+        }
+        gv.ready_1p = true;
+    }
+    if action_state_2.just_pressed(&game_statics::Action::RotR)
+    {
+        for mut text_2 in q_ps.p1().iter_mut()
+        {
+            text_2.0.sections[0].value ="Ready".to_string();
+        }
+        gv.ready_2p = true;
+    }
+
+    if gv.ready_1p && gv.ready_2p
     {
         state.set(PlayState::Ready);
+
+        gv.ready_1p = false;
+        gv.ready_2p = false;
     }
 } 
 
@@ -167,23 +220,29 @@ fn on_enter_ready(
     mut q_text : Query<&mut Text, With<Message>>,
     mut q : Query<&mut GameValue>)
 {
-    let mut text = q_text.single_mut();
     let mut value = q.single_mut();
 
     value.ready_count = game_statics::GAME_READY_COUNT;
     let s = format!("{:.2}", value.ready_count as f32 / 60.0);
-    text.sections[0].value = "Ready..  ".to_string() + &s.to_string(); 
+
+    for mut text in &mut q_text
+    {
+        text.sections[0].value = "Ready..  ".to_string() + &s.to_string(); 
+    }
 }
 fn ready(
     mut q_text : Query<&mut Text, With<Message>>,
     mut q : Query<&mut GameValue>,
     mut state : ResMut<NextState<PlayState>>,)
 {
-    let mut text = q_text.single_mut();
     let mut value = q.single_mut();
 
     let s = format!("{:.2}", value.ready_count as f32 / 60.0);
-    text.sections[0].value = "Ready..  ".to_string() + &s.to_string(); 
+
+    for mut text in &mut q_text
+    {
+        text.sections[0].value = "Ready..  ".to_string() + &s.to_string(); 
+    }
 
     value.ready_count -= 1;
     if value.ready_count == 0
@@ -200,14 +259,19 @@ fn on_enter_playing(mut gc : EventWriter<game_statics::TransitionEvent>,
         player_id : -1,
         transition : game_statics::Transition::Start}
     );
-    let mut text = q_text.single_mut();
-    text.sections[0].value = "".to_string();
+
+    for mut text in &mut q_text
+    {
+        text.sections[0].value = "".to_string(); 
+    }
 }
 
 fn playing(mut state : ResMut<NextState<PlayState>>,
     mut death : EventReader<game_statics::Death>,
-    mut gc : EventWriter<game_statics::TransitionEvent>,)
+    mut gc : EventWriter<game_statics::TransitionEvent>,
+    mut q_gv : Query<&mut GameValue>)
 {
+    let mut gv = q_gv.single_mut();
     for d in death.read()
     {
         state.set(PlayState::Result);
@@ -215,23 +279,67 @@ fn playing(mut state : ResMut<NextState<PlayState>>,
             player_id : d.0,
             transition : game_statics::Transition::Finish}
         );
+        gv.loser_id = d.0;
+        if d.0 == 0
+        {
+            gv.win_2p = gv.win_2p + 1;
+        }
+        if d.0 == 1
+        {
+            gv.win_1p = gv.win_1p + 1;
+        }
     }
 }
 
-fn on_enter_result(mut q_text : Query<&mut Text, With<Message>>,)
+fn on_enter_result(
+    mut q_ps : ParamSet<(
+    Query<(&mut Text, &game_statics::Player1, &Message)>,
+    Query<(&mut Text, &game_statics::Player2, &Message)>)>,
+    q_gv : Query<&GameValue>)
 {
-    let mut text = q_text.single_mut();
-    text.sections[0].value = "GameOver\nZ:Restart\nX:Menu".to_string();
+    let gv = q_gv.single();
+    if gv.loser_id == 1
+    {
+        for mut text_1 in q_ps.p0().iter_mut()
+        {
+            text_1.0.sections[0].value = "Win!!!\n\nX:Restart\nZ:Menu".to_string(); 
+        }
+        for mut text_2 in q_ps.p1().iter_mut()
+        {
+            text_2.0.sections[0].value = "Lose..\n\nX:Restart\nZ:Menu".to_string(); 
+        }
+    }
+    else
+    {
+        for mut text_1 in q_ps.p0().iter_mut()
+        {
+            text_1.0.sections[0].value = "Lose..\n\nX:Restart\nZ:Menu".to_string(); 
+        }
+        for mut text_2 in q_ps.p1().iter_mut()
+        {
+            text_2.0.sections[0].value = "Win!!!\n\nX:Restart\nZ:Menu".to_string();
+        }
+    }
 }
+
 fn result(
-    key_input : Res<Input<KeyCode>>,
+    q_key_1 : Query<&ActionState<game_statics::Action>, With<game_statics::Player1>>,
+    q_key_2 : Query<&ActionState<game_statics::Action>, With<game_statics::Player2>>,
     mut state : ResMut<NextState<PlayState>>,
     mut gstate : ResMut<NextState<GameState>>,
-    mut gc : EventWriter<game_statics::TransitionEvent>,
+    mut rst: EventReader<game_statics::Reset>
 ){
-    if key_input.just_pressed(KeyCode::X)
+    let action_state_1 = q_key_1.single();
+    let action_state_2 = q_key_2.single();
+    if  action_state_1.just_pressed(&game_statics::Action::RotL) ||
+        action_state_2.just_pressed(&game_statics::Action::RotL)
     {
         state.set(PlayState::None);
         gstate.set(GameState::Title);
+    }
+
+    for _ in rst.read()
+    {
+        state.set(PlayState::Wait);
     }
 }
